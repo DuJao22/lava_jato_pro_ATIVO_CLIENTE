@@ -116,6 +116,7 @@ const App: React.FC = () => {
       const isDelete = items.length < oldItems.length;
       
       // CORREÇÃO CRÍTICA: Lógica para detectar Edição vs Criação
+      // Antes estava apenas comparando IDs, o que falhava na edição (ID igual)
       const affectedItem = isDelete 
         ? oldItems.find(o => !items.find(n => n.id === o.id))
         : items.find(n => {
@@ -205,7 +206,7 @@ const App: React.FC = () => {
                 currentUser={currentUser} 
                 onSaveAgendamento={handleClientSaveAgendamento} 
                 onLogout={() => setCurrentUser(null)} 
-                existingAppointments={agendamentos} // Passando lista para checar conflitos
+                existingAppointments={agendamentos} // Passando lista para checar conflitos 24h
             />
         );
     }

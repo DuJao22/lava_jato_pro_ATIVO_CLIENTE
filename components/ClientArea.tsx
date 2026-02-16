@@ -50,7 +50,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({ currentUser, onSaveAgend
   }, []);
 
   // Lógica de Horários 24h (00:00 até 23:00)
-  // Cada serviço dura 1 hora, então não precisa de :30.
+  // Cada serviço dura 1 hora.
   const timeSlots = useMemo(() => {
     const times = [];
     for (let i = 0; i < 24; i++) {
@@ -72,7 +72,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({ currentUser, onSaveAgend
   const [newYear, setNewYear] = useState('');
   const [newSize, setNewSize] = useState<CarSize>(CarSize.MEDIUM);
 
-  // Verificação de Disponibilidade
+  // Verificação de Disponibilidade (Conflito de Horário)
   const isTimeSlotBusy = (dateIso: string, time: string) => {
     const checkDateTime = `${dateIso}T${time}`; // ex: 2024-02-18T17:00
     
