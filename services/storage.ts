@@ -1,0 +1,318 @@
+
+import { Database } from '@sqlitecloud/drivers';
+import { Faturamento, Despesa, Agendamento, User, ServiceItem, Vehicle } from '../types';
+
+const CONNECTION_STRING = (import.meta as any).env?.VITE_SQLITE_CLOUD_CONNECTION_STRING || "sqlitecloud://cbw4nq6vvk.g5.sqlite.cloud:8860/LavaJato_melhoria.db?apikey=CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc";
+
+const FATURAMENTO_KEY = 'lavajato_faturamento_v4';
+const DESPESAS_KEY = 'lavajato_despesas_v4';
+const AGENDAMENTOS_KEY = 'lavajato_agendamentos_v1';
+const USERS_KEY = 'lavajato_users_v1';
+const SERVICES_KEY = 'lavajato_services_v1';
+const VEHICLES_KEY = 'lavajato_vehicles_v1'; // Fallback local
+
+let db: any = null;
+
+if (CONNECTION_STRING) {
+  try {
+    db = new Database(CONNECTION_STRING);
+    console.log("Conectado ao SQLite Cloud");
+  } catch (e) {
+    console.error("Erro ao inicializar SQLite Cloud:", e);
+  }
+}
+
+export const storage = {
+  isCloud: () => !!CONNECTION_STRING && !!db,
+
+  init: async () => {
+    if (!db) return;
+    try {
+      // 1. Tabela Users
+      await db.sql`CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL,
+        points INTEGER DEFAULT 0
+      )`;
+
+      // 2. Admin Default
+      const targetAdmin = await db.sql`SELECT * FROM users WHERE phone = 'Dujao' LIMIT 1`;
+      if (!targetAdmin || targetAdmin.length === 0) {
+        const adminId = Math.random().toString(36).substr(2, 9);
+        await db.sql`INSERT INTO users (id, name, phone, password, role, points) VALUES (${adminId}, 'Administrador', 'Dujao', '3003', 'admin', 0)`;
+      }
+
+      // 3. Agendamentos
+      await db.sql`CREATE TABLE IF NOT EXISTS agendamentos (
+        id TEXT PRIMARY KEY,
+        userId TEXT,
+        clienteNome TEXT NOT NULL,
+        clienteTelefone TEXT NOT NULL,
+        servico TEXT NOT NULL,
+        valor REAL DEFAULT 0,
+        dataAgendamento TEXT NOT NULL,
+        status TEXT NOT NULL,
+        criadoEm TEXT NOT NULL,
+        veiculoSnapshot TEXT
+      )`;
+
+      // Migrations Agendamentos
+      try { await db.sql`ALTER TABLE agendamentos ADD COLUMN userId TEXT`; } catch (e) {}
+      try { await db.sql`ALTER TABLE agendamentos ADD COLUMN valor REAL DEFAULT 0`; } catch (e) {}
+      try { await db.sql`ALTER TABLE agendamentos ADD COLUMN veiculoSnapshot TEXT`; } catch (e) {}
+
+      // 4. Serviços
+      await db.sql`CREATE TABLE IF NOT EXISTS services (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        description TEXT,
+        price REAL NOT NULL
+      )`;
+      
+      const servicesCount = await db.sql`SELECT count(*) as count FROM services`;
+      if (servicesCount[0].count === 0) {
+          await db.sql`INSERT INTO services (id, label, description, price) VALUES 
+          ('simples', 'Lavagem Simples', 'Ducha + Secagem', 40),
+          ('completa', 'Lavagem Completa', 'Int. + Ext. + Cera', 70),
+          ('higienizacao', 'Higienização', 'Bancos + Teto', 250),
+          ('polimento', 'Polimento Técnico', 'Revitalização', 350)`;
+      }
+
+      // 5. Veículos (NOVA TABELA)
+      await db.sql`CREATE TABLE IF NOT EXISTS vehicles (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        brand TEXT NOT NULL,
+        model TEXT NOT NULL,
+        year TEXT NOT NULL,
+        color TEXT NOT NULL,
+        plate TEXT,
+        size TEXT NOT NULL
+      )`;
+
+      await db.sql`CREATE TABLE IF NOT EXISTS faturamento (
+        id TEXT PRIMARY KEY,
+        tipoLavagem TEXT NOT NULL,
+        porte TEXT NOT NULL,
+        valor REAL NOT NULL,
+        pagamento TEXT NOT NULL,
+        data TEXT NOT NULL
+      )`;
+
+      await db.sql`CREATE TABLE IF NOT EXISTS despesas (
+        id TEXT PRIMARY KEY,
+        valor REAL NOT NULL,
+        observacao TEXT,
+        data TEXT NOT NULL
+      )`;
+      
+      console.log("Schema verificado.");
+    } catch (e) {
+      console.error("Erro no Auto-Migration:", e);
+    }
+  },
+
+  ping: async (): Promise<boolean> => {
+    if (db) {
+      try { await db.sql`SELECT 1`; return true; } catch (e) { return false; }
+    }
+    return false;
+  },
+
+  // --- USERS ---
+  login: async (phone: string, password: string): Promise<User | null> => {
+    if (db) {
+      try {
+        const result = await db.sql`SELECT * FROM users WHERE phone = ${phone} AND password = ${password} LIMIT 1`;
+        if (result && result.length > 0) return result[0] as User;
+      } catch (e) { console.error("Login Error:", e); }
+    }
+    if (phone === 'Dujao' && password === '3003') {
+      return { id: 'local-admin', name: 'Administrador (Local)', phone: 'Dujao', role: 'admin', points: 0 };
+    }
+    const localUsers = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    return localUsers.find((u: User) => u.phone === phone && u.password === password) || null;
+  },
+
+  register: async (user: User): Promise<boolean> => {
+    if (db) {
+      try {
+        await db.sql`INSERT INTO users (id, name, phone, password, role, points) VALUES (${user.id}, ${user.name}, ${user.phone}, ${user.password}, ${user.role}, ${user.points})`;
+        return true;
+      } catch (e) { return false; }
+    }
+    const localUsers = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    if (localUsers.find((u: User) => u.phone === user.phone)) return false;
+    localUsers.push(user);
+    localStorage.setItem(USERS_KEY, JSON.stringify(localUsers));
+    return true;
+  },
+
+  addPoints: async (userId: string, points: number): Promise<void> => {
+    if (db) {
+      try { await db.sql`UPDATE users SET points = points + ${points} WHERE id = ${userId}`; } catch(e) {}
+    }
+  },
+
+  getUser: async (userId: string): Promise<User | null> => {
+    if(db) {
+      try {
+        const res = await db.sql`SELECT * FROM users WHERE id = ${userId}`;
+        return res[0] as User;
+      } catch(e) { return null; }
+    }
+    return null;
+  },
+
+  // --- VEÍCULOS (NOVO) ---
+  getUserVehicles: async (userId: string): Promise<Vehicle[]> => {
+    if (db) {
+      try {
+        return await db.sql`SELECT * FROM vehicles WHERE userId = ${userId}`;
+      } catch (e) { console.error(e); }
+    }
+    const local = JSON.parse(localStorage.getItem(VEHICLES_KEY) || '[]');
+    return local.filter((v: Vehicle) => v.userId === userId);
+  },
+
+  addVehicle: async (vehicle: Vehicle): Promise<void> => {
+    if (db) {
+      try {
+        await db.sql`INSERT INTO vehicles (id, userId, brand, model, year, color, plate, size) 
+                     VALUES (${vehicle.id}, ${vehicle.userId}, ${vehicle.brand}, ${vehicle.model}, ${vehicle.year}, ${vehicle.color}, ${vehicle.plate}, ${vehicle.size})`;
+      } catch (e) { console.error(e); }
+    }
+    // Local fallback
+    const local = JSON.parse(localStorage.getItem(VEHICLES_KEY) || '[]');
+    local.push(vehicle);
+    localStorage.setItem(VEHICLES_KEY, JSON.stringify(local));
+  },
+
+  deleteVehicle: async (id: string): Promise<void> => {
+     if(db) {
+       try { await db.sql`DELETE FROM vehicles WHERE id = ${id}`; } catch(e) {}
+     }
+     const local = JSON.parse(localStorage.getItem(VEHICLES_KEY) || '[]');
+     localStorage.setItem(VEHICLES_KEY, JSON.stringify(local.filter((v: Vehicle) => v.id !== id)));
+  },
+
+  // --- SERVIÇOS ---
+  getServices: async (): Promise<ServiceItem[]> => {
+    if (db) {
+        try { return await db.sql`SELECT * FROM services ORDER BY price ASC`; } catch (e) {}
+    }
+    const local = localStorage.getItem(SERVICES_KEY);
+    if (!local) {
+        return [
+            { id: 'simples', label: 'Lavagem Simples', description: 'Ducha + Secagem', price: 40 },
+            { id: 'completa', label: 'Lavagem Completa', description: 'Int. + Ext. + Cera', price: 70 },
+            { id: 'higienizacao', label: 'Higienização', description: 'Bancos + Teto', price: 250 }
+        ];
+    }
+    return JSON.parse(local);
+  },
+
+  saveService: async (items: ServiceItem[], lastItem?: ServiceItem, isDelete?: boolean): Promise<void> => {
+    localStorage.setItem(SERVICES_KEY, JSON.stringify(items));
+    if (db && lastItem) {
+        try {
+            if (isDelete) {
+                await db.sql`DELETE FROM services WHERE id = ${lastItem.id}`;
+            } else {
+                await db.sql`INSERT OR REPLACE INTO services (id, label, description, price) VALUES (${lastItem.id}, ${lastItem.label}, ${lastItem.description}, ${lastItem.price})`;
+            }
+        } catch(e) { console.error(e); }
+    }
+  },
+
+  // --- FATURAMENTO ---
+  getFaturamento: async (): Promise<Faturamento[]> => {
+    if (db) {
+      try {
+        const results = await db.sql`SELECT * FROM faturamento ORDER BY data DESC`;
+        return results || [];
+      } catch (e) { console.error(e); }
+    }
+    const local = localStorage.getItem(FATURAMENTO_KEY);
+    return local ? JSON.parse(local) : [];
+  },
+
+  saveFaturamento: async (items: Faturamento[], lastItem?: Faturamento, isDelete?: boolean): Promise<void> => {
+    localStorage.setItem(FATURAMENTO_KEY, JSON.stringify(items));
+    if (db && lastItem) {
+      try {
+        if (isDelete) {
+          await db.sql`DELETE FROM faturamento WHERE id = ${lastItem.id}`;
+        } else {
+          await db.sql`
+            INSERT OR REPLACE INTO faturamento (id, tipoLavagem, porte, valor, pagamento, data)
+            VALUES (${lastItem.id}, ${lastItem.tipoLavagem}, ${lastItem.porte}, ${lastItem.valor}, ${lastItem.pagamento}, ${lastItem.data})
+          `;
+        }
+      } catch (e) { console.error(e); }
+    }
+  },
+
+  // --- DESPESAS ---
+  getDespesas: async (): Promise<Despesa[]> => {
+    if (db) {
+      try {
+        const results = await db.sql`SELECT * FROM despesas ORDER BY data DESC`;
+        return results || [];
+      } catch (e) { console.error(e); }
+    }
+    const local = localStorage.getItem(DESPESAS_KEY);
+    return local ? JSON.parse(local) : [];
+  },
+
+  saveDespesas: async (items: Despesa[], lastItem?: Despesa, isDelete?: boolean): Promise<void> => {
+    localStorage.setItem(DESPESAS_KEY, JSON.stringify(items));
+    if (db && lastItem) {
+      try {
+        if (isDelete) {
+          await db.sql`DELETE FROM despesas WHERE id = ${lastItem.id}`;
+        } else {
+          await db.sql`
+            INSERT OR REPLACE INTO despesas (id, valor, observacao, data)
+            VALUES (${lastItem.id}, ${lastItem.valor}, ${lastItem.observacao}, ${lastItem.data})
+          `;
+        }
+      } catch (e) { console.error(e); }
+    }
+  },
+
+  // --- AGENDAMENTOS ---
+  getAgendamentos: async (): Promise<Agendamento[]> => {
+    if (db) {
+      try {
+        const results = await db.sql`SELECT * FROM agendamentos ORDER BY dataAgendamento ASC`;
+        return results || [];
+      } catch (e) { console.error("Erro ao buscar agendamentos:", e); }
+    }
+    const local = localStorage.getItem(AGENDAMENTOS_KEY);
+    return local ? JSON.parse(local) : [];
+  },
+
+  saveAgendamento: async (items: Agendamento[], lastItem?: Agendamento, isDelete?: boolean): Promise<void> => {
+    localStorage.setItem(AGENDAMENTOS_KEY, JSON.stringify(items));
+    if (db && lastItem) {
+      try {
+        if (isDelete) {
+          await db.sql`DELETE FROM agendamentos WHERE id = ${lastItem.id}`;
+        } else {
+          const userId = lastItem.userId || null;
+          const valor = lastItem.valor || 0;
+          const veiculo = lastItem.veiculoSnapshot || '';
+          
+          await db.sql`
+            INSERT OR REPLACE INTO agendamentos (id, userId, clienteNome, clienteTelefone, servico, valor, dataAgendamento, status, criadoEm, veiculoSnapshot)
+            VALUES (${lastItem.id}, ${userId}, ${lastItem.clienteNome}, ${lastItem.clienteTelefone}, ${lastItem.servico}, ${valor}, ${lastItem.dataAgendamento}, ${lastItem.status}, ${lastItem.criadoEm}, ${veiculo})
+          `;
+        }
+      } catch (e) { console.error("Erro ao salvar agendamento Cloud:", e); }
+    }
+  }
+};
