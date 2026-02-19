@@ -10,17 +10,19 @@ import { AgendamentosList } from './components/AgendamentosList';
 import { ClientArea } from './components/ClientArea';
 import { AuthModal } from './components/AuthModal';
 import { ServicesManager } from './components/ServicesManager';
+import { SettingsManager } from './components/SettingsManager';
 
 import { Faturamento, Despesa, Agendamento, User, CarSize, PaymentMethod, ServiceItem } from './types';
 import { storage } from './services/storage';
 import { Loader2, CloudOff, Cloud, RefreshCw } from 'lucide-react';
 
-type View = 'dashboard' | 'faturamento' | 'despesas' | 'relatorios' | 'agenda' | 'servicos';
+type View = 'dashboard' | 'faturamento' | 'despesas' | 'relatorios' | 'agenda' | 'servicos' | 'configuracoes';
 
 const App: React.FC = () => {
   // Estado de Usuário (Login)
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAdminMode, setIsAdminMode] = useState(false);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   
@@ -33,6 +35,14 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
+
+  // Check for admin route on mount
+  useEffect(() => {
+    if (window.location.pathname === '/admin') {
+      setIsAdminMode(true);
+      setShowAuthModal(true);
+    }
+  }, []);
 
   // Função centralizada para carregar dados
   const loadData = useCallback(async (showMainLoader = false) => {
@@ -200,17 +210,7 @@ const App: React.FC = () => {
       );
     }
 
-    if (currentUser?.role === 'client') {
-        return (
-            <ClientArea 
-                currentUser={currentUser} 
-                onSaveAgendamento={handleClientSaveAgendamento} 
-                onLogout={() => setCurrentUser(null)} 
-                existingAppointments={agendamentos} // Passando lista para checar conflitos 24h
-            />
-        );
-    }
-
+    // Admin View - Only if logged in as admin
     if (currentUser?.role === 'admin') {
         return (
             <Layout currentView={currentView} setView={setCurrentView} userRole='admin'>
@@ -220,35 +220,63 @@ const App: React.FC = () => {
                 {currentView === 'despesas' && <DespesasList items={despesas} onUpdate={handleUpdateDespesas} />}
                 {currentView === 'relatorios' && <Relatorios faturamentos={faturamentos} despesas={despesas} />}
                 {currentView === 'servicos' && <ServicesManager services={services} onUpdate={handleUpdateServices} />}
+                {currentView === 'configuracoes' && <SettingsManager />}
             </Layout>
         );
     }
 
-    return null;
+    // Admin Login Mode - If on /admin and not logged in
+    if (isAdminMode && !currentUser) {
+       return (
+         <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
+            <div className="text-center text-white">
+               <p className="mb-4 font-bold uppercase tracking-widest text-xs opacity-50">Acesso Restrito</p>
+               <button onClick={() => setShowAuthModal(true)} className="bg-blue-600 px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-blue-600/30 hover:bg-blue-500 transition-all">
+                 Fazer Login Admin
+               </button>
+            </div>
+            {showAuthModal && (
+              <AuthModal 
+                onLoginSuccess={(user) => {
+                  setCurrentUser(user);
+                  setShowAuthModal(false);
+                  if (user.role === 'admin') setCurrentView('dashboard');
+                }} 
+                onClose={() => setShowAuthModal(false)} 
+              />
+            )}
+         </div>
+       );
+    }
+
+    // Client View (Logged in OR Guest)
+    return (
+        <>
+          <ClientArea 
+              currentUser={currentUser} 
+              onSaveAgendamento={handleClientSaveAgendamento} 
+              onLogout={() => setCurrentUser(null)} 
+              onLoginRequest={() => setShowAuthModal(true)}
+              existingAppointments={agendamentos} 
+          />
+          {showAuthModal && (
+            <AuthModal 
+              onLoginSuccess={(user) => {
+                setCurrentUser(user);
+                setShowAuthModal(false);
+              }} 
+              onClose={() => setShowAuthModal(false)} 
+            />
+          )}
+        </>
+    );
   };
 
-  if (!currentUser) {
-    return (
-      <>
-        <LandingPage onEnterSystem={() => setShowAuthModal(true)} />
-        {showAuthModal && (
-          <AuthModal 
-            onLoginSuccess={(user) => {
-              setCurrentUser(user);
-              setShowAuthModal(false);
-              if (user.role === 'admin') setCurrentView('dashboard');
-            }} 
-            onClose={() => setShowAuthModal(false)} 
-          />
-        )}
-      </>
-    );
-  }
-
+  // Removed the blocking !currentUser check
   return (
     <div className="relative">
       {/* Status da Nuvem apenas para Admin */}
-      {currentUser.role === 'admin' && (
+      {currentUser?.role === 'admin' && (
         <div className="fixed bottom-6 right-6 z-50 pointer-events-none transition-all duration-500">
           <div className={`glass px-4 py-2 rounded-full flex items-center gap-3 border-white/20 shadow-2xl ${storage.isCloud() ? 'text-emerald-600' : 'text-amber-600'}`}>
             <div className="relative flex items-center justify-center">

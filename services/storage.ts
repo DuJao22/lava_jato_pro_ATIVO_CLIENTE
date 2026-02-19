@@ -1,6 +1,6 @@
 
 import { Database } from '@sqlitecloud/drivers';
-import { Faturamento, Despesa, Agendamento, User, ServiceItem, Vehicle } from '../types';
+import { Faturamento, Despesa, Agendamento, User, ServiceItem, Vehicle, EstablishmentInfo } from '../types';
 
 const CONNECTION_STRING = (import.meta as any).env?.VITE_SQLITE_CLOUD_CONNECTION_STRING || "sqlitecloud://cbw4nq6vvk.g5.sqlite.cloud:8860/LavaJato_melhoria.db?apikey=CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc";
 
@@ -9,7 +9,8 @@ const DESPESAS_KEY = 'lavajato_despesas_v4';
 const AGENDAMENTOS_KEY = 'lavajato_agendamentos_v1';
 const USERS_KEY = 'lavajato_users_v1';
 const SERVICES_KEY = 'lavajato_services_v1';
-const VEHICLES_KEY = 'lavajato_vehicles_v1'; // Fallback local
+const VEHICLES_KEY = 'lavajato_vehicles_v1';
+const ESTABLISHMENT_KEY = 'lavajato_establishment_v1';
 
 let db: any = null;
 
@@ -69,19 +70,22 @@ export const storage = {
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
         description TEXT,
-        price REAL NOT NULL
+        price REAL NOT NULL,
+        oldPrice REAL
       )`;
       
+      try { await db.sql`ALTER TABLE services ADD COLUMN oldPrice REAL`; } catch (e) {}
+
       const servicesCount = await db.sql`SELECT count(*) as count FROM services`;
       if (servicesCount[0].count === 0) {
-          await db.sql`INSERT INTO services (id, label, description, price) VALUES 
-          ('simples', 'Lavagem Simples', 'Ducha + Secagem', 40),
-          ('completa', 'Lavagem Completa', 'Int. + Ext. + Cera', 70),
-          ('higienizacao', 'Higienização', 'Bancos + Teto', 250),
-          ('polimento', 'Polimento Técnico', 'Revitalização', 350)`;
+          await db.sql`INSERT INTO services (id, label, description, price, oldPrice) VALUES 
+          ('simples', 'Lavagem Simples', 'Ducha + Secagem', 30, 40),
+          ('completa', 'Lavagem Completa', 'Int. + Ext. + Cera', 60, 70),
+          ('higienizacao', 'Higienização', 'Bancos + Teto', 250, 300),
+          ('polimento', 'Polimento Técnico', 'Revitalização', 350, 400)`;
       }
 
-      // 5. Veículos (NOVA TABELA)
+      // 5. Veículos
       await db.sql`CREATE TABLE IF NOT EXISTS vehicles (
         id TEXT PRIMARY KEY,
         userId TEXT NOT NULL,
@@ -108,6 +112,17 @@ export const storage = {
         observacao TEXT,
         data TEXT NOT NULL
       )`;
+
+      // 6. Estabelecimento
+      await db.sql`CREATE TABLE IF NOT EXISTS establishment (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        address TEXT,
+        phone TEXT,
+        instagram TEXT,
+        logoUrl TEXT,
+        wazeUrl TEXT
+      )`;
       
       console.log("Schema verificado.");
     } catch (e) {
@@ -120,6 +135,53 @@ export const storage = {
       try { await db.sql`SELECT 1`; return true; } catch (e) { return false; }
     }
     return false;
+  },
+
+  // --- ESTABELECIMENTO ---
+  getEstablishmentInfo: async (): Promise<EstablishmentInfo> => {
+    const defaultInfo: EstablishmentInfo = {
+      name: 'Lava Jato Pro',
+      address: 'Rua Exemplo, 123 - Centro',
+      phone: '5531999999999',
+      instagram: '@lavajato',
+      wazeUrl: ''
+    };
+
+    if (db) {
+      try {
+        const res = await db.sql`SELECT * FROM establishment LIMIT 1`;
+        if (res && res.length > 0) return res[0] as EstablishmentInfo;
+      } catch (e) { console.error(e); }
+    }
+    
+    const local = localStorage.getItem(ESTABLISHMENT_KEY);
+    return local ? JSON.parse(local) : defaultInfo;
+  },
+
+  saveEstablishmentInfo: async (info: EstablishmentInfo): Promise<boolean> => {
+    localStorage.setItem(ESTABLISHMENT_KEY, JSON.stringify(info));
+    if (db) {
+      try {
+        // Ensure table exists (redundancy check)
+        await db.sql`CREATE TABLE IF NOT EXISTS establishment (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            address TEXT,
+            phone TEXT,
+            instagram TEXT,
+            logoUrl TEXT,
+            wazeUrl TEXT
+        )`;
+
+        await db.sql`INSERT OR REPLACE INTO establishment (id, name, address, phone, instagram, logoUrl, wazeUrl)
+                     VALUES ('1', ${info.name}, ${info.address}, ${info.phone}, ${info.instagram}, ${info.logoUrl || ''}, ${info.wazeUrl || ''})`;
+        return true;
+      } catch (e) { 
+        console.error("Erro ao salvar estabelecimento:", e);
+        return false; 
+      }
+    }
+    return true;
   },
 
   // --- USERS ---
@@ -222,7 +284,8 @@ export const storage = {
             if (isDelete) {
                 await db.sql`DELETE FROM services WHERE id = ${lastItem.id}`;
             } else {
-                await db.sql`INSERT OR REPLACE INTO services (id, label, description, price) VALUES (${lastItem.id}, ${lastItem.label}, ${lastItem.description}, ${lastItem.price})`;
+                await db.sql`INSERT OR REPLACE INTO services (id, label, description, price, oldPrice) 
+                             VALUES (${lastItem.id}, ${lastItem.label}, ${lastItem.description}, ${lastItem.price}, ${lastItem.oldPrice || null})`;
             }
         } catch(e) { console.error(e); }
     }

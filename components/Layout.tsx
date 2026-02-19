@@ -26,7 +26,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, 
     { id: 'faturamento', label: 'Lavagens', shortLabel: 'Lavar', icon: Car },
     { id: 'despesas', label: 'Gastos', shortLabel: 'Gastos', icon: Receipt },
     { id: 'relatorios', label: 'Relatórios', shortLabel: 'Relats', icon: FileBarChart },
-    { id: 'servicos', label: 'Serviços', shortLabel: 'Preços', icon: Settings }, // Novo item
+    { id: 'servicos', label: 'Serviços', shortLabel: 'Preços', icon: Car },
+    { id: 'configuracoes', label: 'Ajustes', shortLabel: 'Config', icon: Settings },
   ];
 
   return (

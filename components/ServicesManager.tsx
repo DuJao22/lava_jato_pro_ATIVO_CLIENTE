@@ -15,11 +15,13 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
   const [label, setLabel] = useState('');
   const [desc, setDesc] = useState('');
   const [price, setPrice] = useState('');
+  const [oldPrice, setOldPrice] = useState('');
 
   const resetForm = () => {
     setLabel('');
     setDesc('');
     setPrice('');
+    setOldPrice('');
     setEditingId(null);
   };
 
@@ -30,10 +32,11 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
     }
 
     const numPrice = parseFloat(price);
+    const numOldPrice = oldPrice ? parseFloat(oldPrice) : undefined;
     
     if (editingId) {
       const updated = services.map(s => 
-        s.id === editingId ? { ...s, label, description: desc, price: numPrice } : s
+        s.id === editingId ? { ...s, label, description: desc, price: numPrice, oldPrice: numOldPrice } : s
       );
       onUpdate(updated);
     } else {
@@ -41,7 +44,8 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
         id: Math.random().toString(36).substr(2, 9),
         label,
         description: desc,
-        price: numPrice
+        price: numPrice,
+        oldPrice: numOldPrice
       };
       onUpdate([...services, newItem]);
     }
@@ -54,6 +58,7 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
     setLabel(item.label);
     setDesc(item.description);
     setPrice(item.price.toString());
+    setOldPrice(item.oldPrice ? item.oldPrice.toString() : '');
     setIsModalOpen(true);
   };
 
@@ -138,17 +143,32 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço (R$)</label>
-                <div className="relative">
-                   <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                   <input 
-                    type="number"
-                    className="w-full pl-9 pr-3 py-3 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
-                    placeholder="0.00"
-                    value={price}
-                    onChange={e => setPrice(e.target.value)}
-                   />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço (R$)</label>
+                  <div className="relative">
+                     <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                     <input 
+                      type="number"
+                      className="w-full pl-9 pr-3 py-3 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                      placeholder="0.00"
+                      value={price}
+                      onChange={e => setPrice(e.target.value)}
+                     />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Antigo (Opcional)</label>
+                  <div className="relative">
+                     <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                     <input 
+                      type="number"
+                      className="w-full pl-9 pr-3 py-3 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-500 focus:ring-2 focus:ring-blue-500"
+                      placeholder="0.00"
+                      value={oldPrice}
+                      onChange={e => setOldPrice(e.target.value)}
+                     />
+                  </div>
                 </div>
               </div>
 

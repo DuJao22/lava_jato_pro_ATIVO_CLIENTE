@@ -69,10 +69,20 @@ export interface ServiceItem {
   label: string;
   description: string;
   price: number;
+  oldPrice?: number; // Preço antigo para promoções (De: X Por: Y)
 }
 
 export interface FinancialSummary {
   totalFaturamento: number;
   totalDespesas: number;
   lucro: number;
+}
+
+export interface EstablishmentInfo {
+  name: string;
+  address: string;
+  phone: string;
+  instagram: string;
+  logoUrl?: string;
+  wazeUrl?: string;
 }
