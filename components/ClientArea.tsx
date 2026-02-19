@@ -105,7 +105,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
 
   const timeSlots = useMemo(() => {
     const times = [];
-    for (let i = 8; i <= 18; i++) { // 8:00 to 18:00
+    for (let i = 0; i < 24; i++) { // 24h availability
       times.push(`${i.toString().padStart(2, '0')}:00`);
     }
     return times;
@@ -220,6 +220,13 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
           <div>
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Bem-vindo ao</p>
             <h1 className="text-xl font-black text-slate-900 tracking-tighter leading-none">{establishment?.name || 'Lava Jato Pro'}</h1>
+            <div className="flex items-center gap-1.5 mt-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Aberto 24h</span>
+            </div>
           </div>
         </div>
         {currentUser ? (
@@ -237,9 +244,15 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       {establishment && (
         <div 
           onClick={() => {
-            if (establishment.wazeUrl) window.open(establishment.wazeUrl, '_blank');
+            if (establishment.wazeUrl) {
+              window.open(establishment.wazeUrl, '_blank');
+            } else if (establishment.address) {
+              // Fallback: Search address on Waze
+              const query = encodeURIComponent(establishment.address);
+              window.open(`https://waze.com/ul?q=${query}&navigate=yes`, '_blank');
+            }
           }}
-          className={`bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-4 ${establishment.wazeUrl ? 'cursor-pointer hover:bg-slate-50 active:scale-95 transition-all' : ''}`}
+          className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 active:scale-95 transition-all"
         >
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
@@ -250,11 +263,9 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
               <p className="text-xs font-bold text-slate-900 truncate">{establishment.address}</p>
             </div>
           </div>
-          {establishment.wazeUrl && (
-            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
-              <Navigation size={20} />
-            </div>
-          )}
+          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
+            <Navigation size={20} />
+          </div>
         </div>
       )}
 
@@ -673,19 +684,8 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
               <CheckCircle2 size={40} />
             </div>
             <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter mb-2">Agendado!</h2>
-            <p className="text-slate-500 text-sm mb-8">Sua solicitação foi enviada com sucesso.</p>
+            <p className="text-slate-500 text-sm mb-8">Sua solicitação foi enviada com sucesso. Acompanhe o status pelo histórico.</p>
             
-            <button 
-              onClick={() => {
-                const phone = establishment?.phone || "5531995281707";
-                const msg = `Olá! Acabei de realizar um agendamento pelo app.`;
-                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
-              }}
-              className="w-full bg-emerald-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest mb-3 flex items-center justify-center gap-2"
-            >
-              Enviar Comprovante (WhatsApp)
-            </button>
-
             <button 
               onClick={() => { setSuccessModal(false); setActiveTab('history'); }}
               className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest"
@@ -702,6 +702,12 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
           {activeTab === 'book' && renderBook()}
           {activeTab === 'history' && renderHistory()}
           {activeTab === 'vehicles' && renderVehicles()}
+          
+          <div className="py-8 text-center space-y-1 opacity-40">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Desenvolvido por</p>
+            <p className="text-xs font-bold text-slate-600">João Layón</p>
+            <p className="text-[10px] text-slate-400">Fullstack Developer • DS Company</p>
+          </div>
         </div>
         {renderBottomNav()}
       </div>
