@@ -2,6 +2,18 @@
 import { Database } from '@sqlitecloud/drivers';
 import { Faturamento, Despesa, Agendamento, User, ServiceItem, Vehicle, EstablishmentInfo } from '../types';
 
+// Suppress internal SQLiteCloud disconnect logs that spam the console
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  if (args[0] && typeof args[0] === 'string' && args[0].includes('SQLiteCloudConnection.connect - error connecting')) {
+    return; // Ignore this specific internal driver error
+  }
+  if (args[0] && args[0] instanceof Error && args[0].message.includes('Disconnected')) {
+    return; // Ignore disconnected error objects
+  }
+  originalConsoleError(...args);
+};
+
 const CONNECTION_STRING = (import.meta as any).env?.VITE_SQLITE_CLOUD_CONNECTION_STRING || "sqlitecloud://cbw4nq6vvk.g5.sqlite.cloud:8860/LavaJato_melhoria.db?apikey=CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc";
 
 const FATURAMENTO_KEY = 'lavajato_faturamento_v4';
@@ -13,24 +25,57 @@ const VEHICLES_KEY = 'lavajato_vehicles_v1';
 const ESTABLISHMENT_KEY = 'lavajato_establishment_v1';
 
 let db: any = null;
+let isConnecting = false;
 
-if (CONNECTION_STRING) {
+const connectDb = async () => {
+  if (!CONNECTION_STRING) return null;
   try {
-    db = new Database(CONNECTION_STRING);
-    console.log("Conectado ao SQLite Cloud");
+    const newDb = new Database(CONNECTION_STRING);
+    // Force connection attempt and catch any immediate errors
+    await newDb.sql`SELECT 1`;
+    return newDb;
   } catch (e) {
-    console.error("Erro ao inicializar SQLite Cloud:", e);
+    // Suppress connection errors to avoid console spam when offline
+    return null;
   }
-}
+};
+
+const getDb = async () => {
+  if (!CONNECTION_STRING) return null;
+  
+  if (db) {
+    try {
+      // Fast ping to check if connection is alive
+      await db.sql`SELECT 1`;
+      return db;
+    } catch (e) {
+      // Connection died, reset it
+      db = null;
+    }
+  }
+  
+  if (!db && !isConnecting) {
+    isConnecting = true;
+    try {
+      db = await connectDb();
+      if (db) console.log("Conectado ao SQLite Cloud");
+    } finally {
+      isConnecting = false;
+    }
+  }
+  
+  return db;
+};
 
 export const storage = {
   isCloud: () => !!CONNECTION_STRING && !!db,
 
   init: async () => {
-    if (!db) return;
+    const currentDb = await getDb();
+    if (!currentDb) return;
     try {
       // 1. Tabela Users
-      await db.sql`CREATE TABLE IF NOT EXISTS users (
+      await currentDb.sql`CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         phone TEXT NOT NULL UNIQUE,
@@ -40,14 +85,14 @@ export const storage = {
       )`;
 
       // 2. Admin Default
-      const targetAdmin = await db.sql`SELECT * FROM users WHERE phone = 'Dujao' LIMIT 1`;
+      const targetAdmin = await currentDb.sql`SELECT * FROM users WHERE phone = 'Dujao' LIMIT 1`;
       if (!targetAdmin || targetAdmin.length === 0) {
         const adminId = Math.random().toString(36).substr(2, 9);
-        await db.sql`INSERT INTO users (id, name, phone, password, role, points) VALUES (${adminId}, 'Administrador', 'Dujao', '3003', 'admin', 0)`;
+        await currentDb.sql`INSERT INTO users (id, name, phone, password, role, points) VALUES (${adminId}, 'Administrador', 'Dujao', '3003', 'admin', 0)`;
       }
 
       // 3. Agendamentos
-      await db.sql`CREATE TABLE IF NOT EXISTS agendamentos (
+      await currentDb.sql`CREATE TABLE IF NOT EXISTS agendamentos (
         id TEXT PRIMARY KEY,
         userId TEXT,
         clienteNome TEXT NOT NULL,
@@ -61,32 +106,36 @@ export const storage = {
       )`;
 
       // Migrations Agendamentos
-      try { await db.sql`ALTER TABLE agendamentos ADD COLUMN userId TEXT`; } catch (e) {}
-      try { await db.sql`ALTER TABLE agendamentos ADD COLUMN valor REAL DEFAULT 0`; } catch (e) {}
-      try { await db.sql`ALTER TABLE agendamentos ADD COLUMN veiculoSnapshot TEXT`; } catch (e) {}
+      try { await currentDb.sql`ALTER TABLE agendamentos ADD COLUMN userId TEXT`; } catch (e) {}
+      try { await currentDb.sql`ALTER TABLE agendamentos ADD COLUMN valor REAL DEFAULT 0`; } catch (e) {}
+      try { await currentDb.sql`ALTER TABLE agendamentos ADD COLUMN veiculoSnapshot TEXT`; } catch (e) {}
 
       // 4. Serviços
-      await db.sql`CREATE TABLE IF NOT EXISTS services (
+      await currentDb.sql`CREATE TABLE IF NOT EXISTS services (
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
         description TEXT,
         price REAL NOT NULL,
+        priceMedium REAL,
+        priceLarge REAL,
         oldPrice REAL
       )`;
       
-      try { await db.sql`ALTER TABLE services ADD COLUMN oldPrice REAL`; } catch (e) {}
+      try { await currentDb.sql`ALTER TABLE services ADD COLUMN oldPrice REAL`; } catch (e) {}
+      try { await currentDb.sql`ALTER TABLE services ADD COLUMN priceMedium REAL`; } catch (e) {}
+      try { await currentDb.sql`ALTER TABLE services ADD COLUMN priceLarge REAL`; } catch (e) {}
 
-      const servicesCount = await db.sql`SELECT count(*) as count FROM services`;
+      const servicesCount = await currentDb.sql`SELECT count(*) as count FROM services`;
       if (servicesCount[0].count === 0) {
-          await db.sql`INSERT INTO services (id, label, description, price, oldPrice) VALUES 
-          ('simples', 'Lavagem Simples', 'Ducha + Secagem', 30, 40),
-          ('completa', 'Lavagem Completa', 'Int. + Ext. + Cera', 60, 70),
-          ('higienizacao', 'Higienização', 'Bancos + Teto', 250, 300),
-          ('polimento', 'Polimento Técnico', 'Revitalização', 350, 400)`;
+          await currentDb.sql`INSERT INTO services (id, label, description, price, priceMedium, priceLarge, oldPrice) VALUES 
+          ('simples', 'Lavagem Simples', 'Ducha + Secagem', 30, 40, 50, 40),
+          ('completa', 'Lavagem Completa', 'Int. + Ext. + Cera', 60, 70, 80, 70),
+          ('higienizacao', 'Higienização', 'Bancos + Teto', 250, 270, 300, 300),
+          ('polimento', 'Polimento Técnico', 'Revitalização', 350, 380, 420, 400)`;
       }
 
       // 5. Veículos
-      await db.sql`CREATE TABLE IF NOT EXISTS vehicles (
+      await currentDb.sql`CREATE TABLE IF NOT EXISTS vehicles (
         id TEXT PRIMARY KEY,
         userId TEXT NOT NULL,
         brand TEXT NOT NULL,
@@ -97,7 +146,7 @@ export const storage = {
         size TEXT NOT NULL
       )`;
 
-      await db.sql`CREATE TABLE IF NOT EXISTS faturamento (
+      await currentDb.sql`CREATE TABLE IF NOT EXISTS faturamento (
         id TEXT PRIMARY KEY,
         tipoLavagem TEXT NOT NULL,
         porte TEXT NOT NULL,
@@ -106,7 +155,7 @@ export const storage = {
         data TEXT NOT NULL
       )`;
 
-      await db.sql`CREATE TABLE IF NOT EXISTS despesas (
+      await currentDb.sql`CREATE TABLE IF NOT EXISTS despesas (
         id TEXT PRIMARY KEY,
         valor REAL NOT NULL,
         observacao TEXT,
@@ -114,7 +163,7 @@ export const storage = {
       )`;
 
       // 6. Estabelecimento
-      await db.sql`CREATE TABLE IF NOT EXISTS establishment (
+      await currentDb.sql`CREATE TABLE IF NOT EXISTS establishment (
         id TEXT PRIMARY KEY,
         name TEXT,
         address TEXT,
@@ -126,13 +175,14 @@ export const storage = {
       
       console.log("Schema verificado.");
     } catch (e) {
-      console.error("Erro no Auto-Migration:", e);
+      // Suppress auto-migration errors if connection drops
     }
   },
 
   ping: async (): Promise<boolean> => {
-    if (db) {
-      try { await db.sql`SELECT 1`; return true; } catch (e) { return false; }
+    const currentDb = await getDb();
+    if (currentDb) {
+      try { await currentDb.sql`SELECT 1`; return true; } catch (e) { return false; }
     }
     return false;
   },
@@ -147,11 +197,12 @@ export const storage = {
       wazeUrl: ''
     };
 
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        const res = await db.sql`SELECT * FROM establishment LIMIT 1`;
+        const res = await currentDb.sql`SELECT * FROM establishment LIMIT 1`;
         if (res && res.length > 0) return res[0] as EstablishmentInfo;
-      } catch (e) { console.error(e); }
+      } catch (e) { /* fallback */ }
     }
     
     const local = localStorage.getItem(ESTABLISHMENT_KEY);
@@ -160,10 +211,11 @@ export const storage = {
 
   saveEstablishmentInfo: async (info: EstablishmentInfo): Promise<boolean> => {
     localStorage.setItem(ESTABLISHMENT_KEY, JSON.stringify(info));
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
         // Ensure table exists (redundancy check)
-        await db.sql`CREATE TABLE IF NOT EXISTS establishment (
+        await currentDb.sql`CREATE TABLE IF NOT EXISTS establishment (
             id TEXT PRIMARY KEY,
             name TEXT,
             address TEXT,
@@ -173,11 +225,10 @@ export const storage = {
             wazeUrl TEXT
         )`;
 
-        await db.sql`INSERT OR REPLACE INTO establishment (id, name, address, phone, instagram, logoUrl, wazeUrl)
+        await currentDb.sql`INSERT OR REPLACE INTO establishment (id, name, address, phone, instagram, logoUrl, wazeUrl)
                      VALUES ('1', ${info.name}, ${info.address}, ${info.phone}, ${info.instagram}, ${info.logoUrl || ''}, ${info.wazeUrl || ''})`;
         return true;
       } catch (e) { 
-        console.error("Erro ao salvar estabelecimento:", e);
         return false; 
       }
     }
@@ -186,11 +237,12 @@ export const storage = {
 
   // --- USERS ---
   login: async (phone: string, password: string): Promise<User | null> => {
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        const result = await db.sql`SELECT * FROM users WHERE phone = ${phone} AND password = ${password} LIMIT 1`;
+        const result = await currentDb.sql`SELECT * FROM users WHERE phone = ${phone} AND password = ${password} LIMIT 1`;
         if (result && result.length > 0) return result[0] as User;
-      } catch (e) { console.error("Login Error:", e); }
+      } catch (e) { /* fallback */ }
     }
     if (phone === 'Dujao' && password === '3003') {
       return { id: 'local-admin', name: 'Administrador (Local)', phone: 'Dujao', role: 'admin', points: 0 };
@@ -200,9 +252,10 @@ export const storage = {
   },
 
   register: async (user: User): Promise<boolean> => {
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        await db.sql`INSERT INTO users (id, name, phone, password, role, points) VALUES (${user.id}, ${user.name}, ${user.phone}, ${user.password}, ${user.role}, ${user.points})`;
+        await currentDb.sql`INSERT INTO users (id, name, phone, password, role, points) VALUES (${user.id}, ${user.name}, ${user.phone}, ${user.password}, ${user.role}, ${user.points})`;
         return true;
       } catch (e) { return false; }
     }
@@ -214,15 +267,17 @@ export const storage = {
   },
 
   addPoints: async (userId: string, points: number): Promise<void> => {
-    if (db) {
-      try { await db.sql`UPDATE users SET points = points + ${points} WHERE id = ${userId}`; } catch(e) {}
+    const currentDb = await getDb();
+    if (currentDb) {
+      try { await currentDb.sql`UPDATE users SET points = points + ${points} WHERE id = ${userId}`; } catch(e) {}
     }
   },
 
   getUser: async (userId: string): Promise<User | null> => {
-    if(db) {
+    const currentDb = await getDb();
+    if(currentDb) {
       try {
-        const res = await db.sql`SELECT * FROM users WHERE id = ${userId}`;
+        const res = await currentDb.sql`SELECT * FROM users WHERE id = ${userId}`;
         return res[0] as User;
       } catch(e) { return null; }
     }
@@ -231,21 +286,23 @@ export const storage = {
 
   // --- VEÍCULOS (NOVO) ---
   getUserVehicles: async (userId: string): Promise<Vehicle[]> => {
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        return await db.sql`SELECT * FROM vehicles WHERE userId = ${userId}`;
-      } catch (e) { console.error(e); }
+        return await currentDb.sql`SELECT * FROM vehicles WHERE userId = ${userId}`;
+      } catch (e) { /* fallback */ }
     }
     const local = JSON.parse(localStorage.getItem(VEHICLES_KEY) || '[]');
     return local.filter((v: Vehicle) => v.userId === userId);
   },
 
   addVehicle: async (vehicle: Vehicle): Promise<void> => {
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        await db.sql`INSERT INTO vehicles (id, userId, brand, model, year, color, plate, size) 
+        await currentDb.sql`INSERT INTO vehicles (id, userId, brand, model, year, color, plate, size) 
                      VALUES (${vehicle.id}, ${vehicle.userId}, ${vehicle.brand}, ${vehicle.model}, ${vehicle.year}, ${vehicle.color}, ${vehicle.plate}, ${vehicle.size})`;
-      } catch (e) { console.error(e); }
+      } catch (e) { /* fallback */ }
     }
     // Local fallback
     const local = JSON.parse(localStorage.getItem(VEHICLES_KEY) || '[]');
@@ -254,8 +311,9 @@ export const storage = {
   },
 
   deleteVehicle: async (id: string): Promise<void> => {
-     if(db) {
-       try { await db.sql`DELETE FROM vehicles WHERE id = ${id}`; } catch(e) {}
+     const currentDb = await getDb();
+     if(currentDb) {
+       try { await currentDb.sql`DELETE FROM vehicles WHERE id = ${id}`; } catch(e) {}
      }
      const local = JSON.parse(localStorage.getItem(VEHICLES_KEY) || '[]');
      localStorage.setItem(VEHICLES_KEY, JSON.stringify(local.filter((v: Vehicle) => v.id !== id)));
@@ -263,8 +321,9 @@ export const storage = {
 
   // --- SERVIÇOS ---
   getServices: async (): Promise<ServiceItem[]> => {
-    if (db) {
-        try { return await db.sql`SELECT * FROM services ORDER BY price ASC`; } catch (e) {}
+    const currentDb = await getDb();
+    if (currentDb) {
+        try { return await currentDb.sql`SELECT * FROM services ORDER BY price ASC`; } catch (e) {}
     }
     const local = localStorage.getItem(SERVICES_KEY);
     if (!local) {
@@ -279,25 +338,27 @@ export const storage = {
 
   saveService: async (items: ServiceItem[], lastItem?: ServiceItem, isDelete?: boolean): Promise<void> => {
     localStorage.setItem(SERVICES_KEY, JSON.stringify(items));
-    if (db && lastItem) {
+    const currentDb = await getDb();
+    if (currentDb && lastItem) {
         try {
             if (isDelete) {
-                await db.sql`DELETE FROM services WHERE id = ${lastItem.id}`;
+                await currentDb.sql`DELETE FROM services WHERE id = ${lastItem.id}`;
             } else {
-                await db.sql`INSERT OR REPLACE INTO services (id, label, description, price, oldPrice) 
-                             VALUES (${lastItem.id}, ${lastItem.label}, ${lastItem.description}, ${lastItem.price}, ${lastItem.oldPrice || null})`;
+                await currentDb.sql`INSERT OR REPLACE INTO services (id, label, description, price, priceMedium, priceLarge, oldPrice) 
+                             VALUES (${lastItem.id}, ${lastItem.label}, ${lastItem.description}, ${lastItem.price}, ${lastItem.priceMedium || null}, ${lastItem.priceLarge || null}, ${lastItem.oldPrice || null})`;
             }
-        } catch(e) { console.error(e); }
+        } catch(e) { /* fallback */ }
     }
   },
 
   // --- FATURAMENTO ---
   getFaturamento: async (): Promise<Faturamento[]> => {
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        const results = await db.sql`SELECT * FROM faturamento ORDER BY data DESC`;
+        const results = await currentDb.sql`SELECT * FROM faturamento ORDER BY data DESC`;
         return results || [];
-      } catch (e) { console.error(e); }
+      } catch (e) { /* fallback */ }
     }
     const local = localStorage.getItem(FATURAMENTO_KEY);
     return local ? JSON.parse(local) : [];
@@ -305,27 +366,29 @@ export const storage = {
 
   saveFaturamento: async (items: Faturamento[], lastItem?: Faturamento, isDelete?: boolean): Promise<void> => {
     localStorage.setItem(FATURAMENTO_KEY, JSON.stringify(items));
-    if (db && lastItem) {
+    const currentDb = await getDb();
+    if (currentDb && lastItem) {
       try {
         if (isDelete) {
-          await db.sql`DELETE FROM faturamento WHERE id = ${lastItem.id}`;
+          await currentDb.sql`DELETE FROM faturamento WHERE id = ${lastItem.id}`;
         } else {
-          await db.sql`
+          await currentDb.sql`
             INSERT OR REPLACE INTO faturamento (id, tipoLavagem, porte, valor, pagamento, data)
             VALUES (${lastItem.id}, ${lastItem.tipoLavagem}, ${lastItem.porte}, ${lastItem.valor}, ${lastItem.pagamento}, ${lastItem.data})
           `;
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { /* fallback */ }
     }
   },
 
   // --- DESPESAS ---
   getDespesas: async (): Promise<Despesa[]> => {
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        const results = await db.sql`SELECT * FROM despesas ORDER BY data DESC`;
+        const results = await currentDb.sql`SELECT * FROM despesas ORDER BY data DESC`;
         return results || [];
-      } catch (e) { console.error(e); }
+      } catch (e) { /* fallback */ }
     }
     const local = localStorage.getItem(DESPESAS_KEY);
     return local ? JSON.parse(local) : [];
@@ -333,27 +396,29 @@ export const storage = {
 
   saveDespesas: async (items: Despesa[], lastItem?: Despesa, isDelete?: boolean): Promise<void> => {
     localStorage.setItem(DESPESAS_KEY, JSON.stringify(items));
-    if (db && lastItem) {
+    const currentDb = await getDb();
+    if (currentDb && lastItem) {
       try {
         if (isDelete) {
-          await db.sql`DELETE FROM despesas WHERE id = ${lastItem.id}`;
+          await currentDb.sql`DELETE FROM despesas WHERE id = ${lastItem.id}`;
         } else {
-          await db.sql`
+          await currentDb.sql`
             INSERT OR REPLACE INTO despesas (id, valor, observacao, data)
             VALUES (${lastItem.id}, ${lastItem.valor}, ${lastItem.observacao}, ${lastItem.data})
           `;
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { /* fallback */ }
     }
   },
 
   // --- AGENDAMENTOS ---
   getAgendamentos: async (): Promise<Agendamento[]> => {
-    if (db) {
+    const currentDb = await getDb();
+    if (currentDb) {
       try {
-        const results = await db.sql`SELECT * FROM agendamentos ORDER BY dataAgendamento ASC`;
+        const results = await currentDb.sql`SELECT * FROM agendamentos ORDER BY dataAgendamento ASC`;
         return results || [];
-      } catch (e) { console.error("Erro ao buscar agendamentos:", e); }
+      } catch (e) { /* fallback */ }
     }
     const local = localStorage.getItem(AGENDAMENTOS_KEY);
     return local ? JSON.parse(local) : [];
@@ -361,21 +426,22 @@ export const storage = {
 
   saveAgendamento: async (items: Agendamento[], lastItem?: Agendamento, isDelete?: boolean): Promise<void> => {
     localStorage.setItem(AGENDAMENTOS_KEY, JSON.stringify(items));
-    if (db && lastItem) {
+    const currentDb = await getDb();
+    if (currentDb && lastItem) {
       try {
         if (isDelete) {
-          await db.sql`DELETE FROM agendamentos WHERE id = ${lastItem.id}`;
+          await currentDb.sql`DELETE FROM agendamentos WHERE id = ${lastItem.id}`;
         } else {
           const userId = lastItem.userId || null;
           const valor = lastItem.valor || 0;
           const veiculo = lastItem.veiculoSnapshot || '';
           
-          await db.sql`
+          await currentDb.sql`
             INSERT OR REPLACE INTO agendamentos (id, userId, clienteNome, clienteTelefone, servico, valor, dataAgendamento, status, criadoEm, veiculoSnapshot)
             VALUES (${lastItem.id}, ${userId}, ${lastItem.clienteNome}, ${lastItem.clienteTelefone}, ${lastItem.servico}, ${valor}, ${lastItem.dataAgendamento}, ${lastItem.status}, ${lastItem.criadoEm}, ${veiculo})
           `;
         }
-      } catch (e) { console.error("Erro ao salvar agendamento Cloud:", e); }
+      } catch (e) { /* fallback */ }
     }
   }
 };

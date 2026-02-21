@@ -119,6 +119,83 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
     );
   };
 
+  // Push Notification Logic
+  useEffect(() => {
+    const setupNotifications = async () => {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      
+      try {
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        console.log('Service Worker registered:', registration);
+
+        // Request permission
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          console.log('Notification permission not granted.');
+          return;
+        }
+
+        // Get VAPID Public Key from server
+        const response = await fetch('/api/vapid-public-key');
+        if (!response.ok) return;
+        
+        const { publicKey } = await response.json();
+        const convertedVapidKey = urlBase64ToUint8Array(publicKey);
+
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedVapidKey
+        });
+
+        // Send subscription to server
+        await fetch('/api/subscribe', {
+          method: 'POST',
+          body: JSON.stringify(subscription),
+          headers: {
+            'content-type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.error('Service Worker error:', error);
+      }
+    };
+
+    setupNotifications();
+  }, []);
+
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+  
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+  
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  const getServicePrice = (service: ServiceItem) => {
+    if (!currentUser || !selectedVehicleId) return service.price;
+    const vehicle = vehicles.find(v => v.id === selectedVehicleId);
+    if (!vehicle) return service.price;
+
+    if (vehicle.size === 'Grande' && service.priceLarge) return service.priceLarge;
+    if (vehicle.size === 'Médio' && service.priceMedium) return service.priceMedium;
+    return service.price; // Pequeno or fallback
+  };
+
+  const renderServicePriceLabel = (service: ServiceItem) => {
+    if (!currentUser || !selectedVehicleId) {
+      return `A partir de R$ ${service.price.toFixed(2)}`;
+    }
+    const price = getServicePrice(service);
+    return `R$ ${price.toFixed(2)}`;
+  };
+
   const handleBook = async () => {
     if (!selectedServiceId || !selectedDate || !selectedTime || !selectedVehicleId || !currentUser) return;
     
@@ -127,13 +204,15 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       const service = services.find(s => s.id === selectedServiceId);
       const vehicle = vehicles.find(v => v.id === selectedVehicleId);
       
+      const finalPrice = service ? getServicePrice(service) : 0;
+
       const agendamento: Agendamento = {
         id: Math.random().toString(36).substr(2, 9),
         userId: currentUser.id,
         clienteNome: currentUser.name,
         clienteTelefone: currentUser.phone,
         servico: service?.label || '',
-        valor: service?.price || 0,
+        valor: finalPrice,
         dataAgendamento: `${selectedDate}T${selectedTime}:00`,
         status: 'pendente',
         criadoEm: new Date().toISOString(),
@@ -141,6 +220,17 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       };
 
       await onSaveAgendamento(agendamento);
+      
+      // Send Push Notification
+      await fetch('/api/notify', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Agendamento Confirmado!',
+          body: `Olá ${currentUser.name}, seu agendamento para ${service?.label} foi recebido.`
+        }),
+        headers: { 'content-type': 'application/json' }
+      });
+
       setSuccessModal(true);
       
       // Reset form
@@ -368,7 +458,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
               <h3 className="font-bold text-slate-900 text-sm">{s.label}</h3>
               <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">{s.description}</p>
               <div className="mt-2 flex items-center gap-2">
-                 <p className="text-xs font-black text-blue-600">R$ {s.price.toFixed(2)}</p>
+                 <p className="text-xs font-black text-blue-600">{renderServicePriceLabel(s)}</p>
                  {s.oldPrice && s.oldPrice > s.price && (
                    <p className="text-[10px] font-bold text-slate-400 line-through">R$ {s.oldPrice.toFixed(2)}</p>
                  )}
@@ -411,7 +501,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
                   {s.oldPrice && s.oldPrice > s.price && (
                     <span className="block text-[10px] font-bold text-slate-400 line-through">R$ {s.oldPrice.toFixed(2)}</span>
                   )}
-                  <span className="font-black text-slate-900">R$ {s.price.toFixed(2)}</span>
+                  <span className="font-black text-slate-900">{renderServicePriceLabel(s)}</span>
                 </div>
                 <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-600" />
               </div>

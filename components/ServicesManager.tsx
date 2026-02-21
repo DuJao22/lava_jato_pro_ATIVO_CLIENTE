@@ -14,29 +14,35 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
 
   const [label, setLabel] = useState('');
   const [desc, setDesc] = useState('');
-  const [price, setPrice] = useState('');
+  const [price, setPrice] = useState(''); // Pequeno
+  const [priceMedium, setPriceMedium] = useState(''); // Médio
+  const [priceLarge, setPriceLarge] = useState(''); // Grande
   const [oldPrice, setOldPrice] = useState('');
 
   const resetForm = () => {
     setLabel('');
     setDesc('');
     setPrice('');
+    setPriceMedium('');
+    setPriceLarge('');
     setOldPrice('');
     setEditingId(null);
   };
 
   const handleSave = () => {
     if (!label || !price) {
-      alert("Nome e Preço são obrigatórios");
+      alert("Nome e Preço (Pequeno) são obrigatórios");
       return;
     }
 
     const numPrice = parseFloat(price);
+    const numPriceMedium = priceMedium ? parseFloat(priceMedium) : numPrice;
+    const numPriceLarge = priceLarge ? parseFloat(priceLarge) : numPriceMedium;
     const numOldPrice = oldPrice ? parseFloat(oldPrice) : undefined;
     
     if (editingId) {
       const updated = services.map(s => 
-        s.id === editingId ? { ...s, label, description: desc, price: numPrice, oldPrice: numOldPrice } : s
+        s.id === editingId ? { ...s, label, description: desc, price: numPrice, priceMedium: numPriceMedium, priceLarge: numPriceLarge, oldPrice: numOldPrice } : s
       );
       onUpdate(updated);
     } else {
@@ -45,6 +51,8 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
         label,
         description: desc,
         price: numPrice,
+        priceMedium: numPriceMedium,
+        priceLarge: numPriceLarge,
         oldPrice: numOldPrice
       };
       onUpdate([...services, newItem]);
@@ -58,6 +66,8 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
     setLabel(item.label);
     setDesc(item.description);
     setPrice(item.price.toString());
+    setPriceMedium(item.priceMedium ? item.priceMedium.toString() : item.price.toString());
+    setPriceLarge(item.priceLarge ? item.priceLarge.toString() : item.price.toString());
     setOldPrice(item.oldPrice ? item.oldPrice.toString() : '');
     setIsModalOpen(true);
   };
@@ -65,11 +75,6 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir este serviço?')) {
       const updated = services.filter(s => s.id !== id);
-      // Para deletar de verdade do banco, passamos a lista nova.
-      // O App.tsx lidará com a chamada de storage.saveService(updated, deletedItem, true)
-      // Mas a interface espera receber a lista completa.
-      // Aqui faremos um hack: passamos a lista nova, e o pai (App.tsx) vai detectar.
-      // No App.tsx, a função handleUpdateServices já lida com delete se a lista diminuir.
       onUpdate(updated);
     }
   };
@@ -92,9 +97,21 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
             <div>
               <div className="flex justify-between items-start mb-2">
                  <h3 className="font-black text-slate-900 uppercase italic">{item.label}</h3>
-                 <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-black uppercase tracking-tighter">
-                   R$ {item.price.toFixed(2)}
-                 </span>
+                 <div className="flex flex-col items-end gap-1">
+                   <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-black uppercase tracking-tighter">
+                     P: R$ {item.price.toFixed(2)}
+                   </span>
+                   {(item.priceMedium && item.priceMedium !== item.price) && (
+                     <span className="bg-slate-50 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tighter">
+                       M: R$ {item.priceMedium.toFixed(2)}
+                     </span>
+                   )}
+                   {(item.priceLarge && item.priceLarge !== item.price) && (
+                     <span className="bg-slate-50 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tighter">
+                       G: R$ {item.priceLarge.toFixed(2)}
+                     </span>
+                   )}
+                 </div>
               </div>
               <p className="text-xs text-slate-500 font-medium mb-4">{item.description}</p>
             </div>
@@ -119,7 +136,7 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[70] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in zoom-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-black text-slate-900 uppercase italic">
                 {editingId ? 'Editar Serviço' : 'Novo Serviço'}
@@ -143,9 +160,9 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço (R$)</label>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço (Pequeno)</label>
                   <div className="relative">
                      <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                      <input 
@@ -158,17 +175,44 @@ export const ServicesManager: React.FC<ServicesManagerProps> = ({ services, onUp
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Antigo (Opcional)</label>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço (Médio)</label>
                   <div className="relative">
                      <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                      <input 
                       type="number"
-                      className="w-full pl-9 pr-3 py-3 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-500 focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-9 pr-3 py-3 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
                       placeholder="0.00"
-                      value={oldPrice}
-                      onChange={e => setOldPrice(e.target.value)}
+                      value={priceMedium}
+                      onChange={e => setPriceMedium(e.target.value)}
                      />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço (Grande)</label>
+                  <div className="relative">
+                     <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                     <input 
+                      type="number"
+                      className="w-full pl-9 pr-3 py-3 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                      placeholder="0.00"
+                      value={priceLarge}
+                      onChange={e => setPriceLarge(e.target.value)}
+                     />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Preço Antigo (Opcional - Risco)</label>
+                <div className="relative">
+                   <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                   <input 
+                    type="number"
+                    className="w-full pl-9 pr-3 py-3 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-500 focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                    value={oldPrice}
+                    onChange={e => setOldPrice(e.target.value)}
+                   />
                 </div>
               </div>
 

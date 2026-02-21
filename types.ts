@@ -69,6 +69,8 @@ export interface ServiceItem {
   label: string;
   description: string;
   price: number;
+  priceMedium?: number;
+  priceLarge?: number;
   oldPrice?: number; // Preço antigo para promoções (De: X Por: Y)
 }
 
