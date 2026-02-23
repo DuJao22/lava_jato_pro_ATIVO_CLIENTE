@@ -469,16 +469,17 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       {/* Quick Services */}
       <div id="services-section">
         <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-4">Nossos Serviços</h2>
-        <div className="space-y-3">
-          {services.map(s => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {services.map((s, index) => (
             <button 
               key={s.id} 
+              id={index === 0 ? 'first-service-card' : undefined}
               onClick={() => {
                 setSelectedServiceId(s.id);
                 setBookingStep(2);
                 setActiveTab('book');
               }}
-              className="w-full bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left hover:border-blue-200 transition-all active:scale-95 relative overflow-hidden flex items-start gap-4"
+              className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left hover:border-blue-200 transition-all active:scale-95 relative overflow-hidden flex flex-col gap-3 group h-full"
             >
               {s.oldPrice && s.oldPrice > s.price && (
                 <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-black uppercase px-2 py-1 rounded-bl-xl z-10">
@@ -486,23 +487,21 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
                 </div>
               )}
               
-              <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 shrink-0">
-                <Car size={24} />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start mb-1">
-                  <h3 className="font-bold text-slate-900 text-sm">{s.label}</h3>
+              <div className="flex justify-between items-start w-full">
+                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                  <Car size={20} />
                 </div>
-                
-                <p className="text-xs text-slate-500 leading-relaxed mb-2">{s.description}</p>
-                
-                <div className="flex items-center gap-2">
+                <div className="text-right">
                    <p className="text-sm font-black text-blue-600">{renderServicePriceLabel(s)}</p>
                    {s.oldPrice && s.oldPrice > s.price && (
-                     <p className="text-xs font-bold text-slate-400 line-through">R$ {s.oldPrice.toFixed(2)}</p>
+                     <p className="text-[10px] font-bold text-slate-400 line-through">R$ {s.oldPrice.toFixed(2)}</p>
                    )}
                 </div>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm mb-1">{s.label}</h3>
+                <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{s.description}</p>
               </div>
             </button>
           ))}
@@ -928,12 +927,12 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       targetId: 'upcoming-appointment',
       title: 'Seus Agendamentos',
       content: 'Aqui você vê seu próximo agendamento confirmado. Fique de olho no horário!',
-      position: 'bottom'
+      position: 'top'
     },
     {
-      targetId: 'services-section',
+      targetId: 'first-service-card',
       title: 'Nossos Serviços',
-      content: 'Explore nossa lista de serviços, veja preços e promoções especiais para seu carro.',
+      content: 'Toque em um serviço para ver detalhes e agendar. Temos opções para todos os gostos!',
       position: 'top'
     },
     {
