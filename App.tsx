@@ -67,24 +67,35 @@ const App: React.FC = () => {
         await storage.init();
       }
 
-      const [fat, desp, agenda, serv] = await Promise.all([
-        storage.getFaturamento(),
-        storage.getDespesas(),
-        storage.getAgendamentos(),
-        storage.getServices()
-      ]);
+      // Optimization: Load only necessary data based on role
+      if (currentUser?.role === 'admin') {
+        const [fat, desp, agenda, serv] = await Promise.all([
+          storage.getFaturamento(),
+          storage.getDespesas(),
+          storage.getAgendamentos(),
+          storage.getServices()
+        ]);
+        setFaturamentos(fat);
+        setDespesas(desp);
+        setAgendamentos(agenda);
+        setServices(serv);
+      } else {
+        // Client only needs appointments and services
+        const [agenda, serv] = await Promise.all([
+          storage.getAgendamentos(),
+          storage.getServices()
+        ]);
+        setAgendamentos(agenda);
+        setServices(serv);
+      }
       
-      setFaturamentos(fat);
-      setDespesas(desp);
-      setAgendamentos(agenda);
-      setServices(serv);
     } catch (err) {
       console.error("Falha ao sincronizar dados:", err);
     } finally {
       setIsLoading(false);
       setIsSyncing(false);
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     const keepAlive = async () => {
@@ -99,11 +110,13 @@ const App: React.FC = () => {
   useEffect(() => {
     loadData(true);
     const interval = setInterval(() => {
-      // Atualiza periodicamente para garantir que a agenda esteja atualizada para todos
-      loadData(false);
-    }, 15000); 
+      // Optimize: Only reload if tab is visible
+      if (!document.hidden) {
+        loadData(false);
+      }
+    }, 60000); // Increased to 60s to reduce load
     return () => clearInterval(interval);
-  }, [loadData, currentUser]);
+  }, [loadData]);
 
   const handleUpdateFaturamento = async (items: Faturamento[]) => {
     const oldItems = faturamentos;
@@ -226,7 +239,7 @@ const App: React.FC = () => {
     // Admin View - Only if logged in as admin
     if (currentUser?.role === 'admin') {
         return (
-            <Layout currentView={currentView} setView={setCurrentView} userRole='admin'>
+            <Layout currentView={currentView} setView={setCurrentView} userRole='admin' onLogout={handleLogout}>
                 {currentView === 'dashboard' && <Dashboard faturamentos={faturamentos} despesas={despesas} />}
                 {currentView === 'agenda' && <AgendamentosList agendamentos={agendamentos} onUpdate={handleUpdateAgendamentos} services={services} />}
                 {currentView === 'faturamento' && <FaturamentoList items={faturamentos} onUpdate={handleUpdateFaturamento} />}

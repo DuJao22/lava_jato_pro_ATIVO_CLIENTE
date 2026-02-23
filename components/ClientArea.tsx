@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Agendamento, User, ServiceItem, Vehicle, CarSize, EstablishmentInfo } from '../types';
 import { storage } from '../services/storage';
+import { Tutorial, TutorialStep } from './Tutorial';
 
 interface ClientAreaProps {
   currentUser: User | null;
@@ -49,10 +50,20 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
   const [showVehicleSwitcher, setShowVehicleSwitcher] = useState(false);
 
   const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
+  
+  // Tutorial State
+  const [showTutorial, setShowTutorial] = useState(false);
 
   // Load Data
   useEffect(() => {
     const loadUserData = async () => {
+      // Check tutorial status
+      const hasSeenTutorial = localStorage.getItem('lavajato_tutorial_seen_v1');
+      if (!hasSeenTutorial) {
+        // Delay slightly to ensure elements are rendered
+        setTimeout(() => setShowTutorial(true), 1000);
+      }
+
       if (currentUser) {
         const u = await storage.getUser(currentUser.id);
         if (u) setPoints(u.points);
@@ -294,16 +305,17 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
   const renderBottomNav = () => (
     <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)] z-50">
       <div className="flex justify-around items-center p-2">
-        <NavButton icon={<Home size={20} />} label="Início" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-        <NavButton icon={<Plus size={24} />} label="Agendar" active={activeTab === 'book'} onClick={() => setActiveTab('book')} isMain />
-        <NavButton icon={<History size={20} />} label="Histórico" active={activeTab === 'history'} onClick={() => setActiveTab('history')} />
-        <NavButton icon={<Car size={20} />} label="Veículos" active={activeTab === 'vehicles'} onClick={() => setActiveTab('vehicles')} />
+        <NavButton id="nav-home" icon={<Home size={20} />} label="Início" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+        <NavButton id="nav-book" icon={<Plus size={24} />} label="Agendar" active={activeTab === 'book'} onClick={() => setActiveTab('book')} isMain />
+        <NavButton id="nav-history" icon={<History size={20} />} label="Histórico" active={activeTab === 'history'} onClick={() => setActiveTab('history')} />
+        <NavButton id="nav-vehicles" icon={<Car size={20} />} label="Veículos" active={activeTab === 'vehicles'} onClick={() => setActiveTab('vehicles')} />
       </div>
     </div>
   );
 
-  const NavButton = ({ icon, label, active, onClick, isMain }: any) => (
+  const NavButton = ({ icon, label, active, onClick, isMain, id }: any) => (
     <button 
+      id={id}
       onClick={onClick}
       className={`flex flex-col items-center justify-center w-16 h-14 rounded-2xl transition-all duration-300 ${
         active ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
@@ -381,7 +393,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       )}
 
       {/* Loyalty Card */}
-      <div className="relative overflow-hidden rounded-[2rem] bg-slate-900 p-6 text-white shadow-2xl shadow-slate-900/20">
+      <div id="loyalty-card" className="relative overflow-hidden rounded-[2rem] bg-slate-900 p-6 text-white shadow-2xl shadow-slate-900/20">
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-gradient-to-br from-yellow-400 to-transparent opacity-20 rounded-full blur-2xl" />
         <div className="relative z-10">
           <div className="flex justify-between items-start mb-8">
@@ -424,7 +436,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       </div>
 
       {/* Upcoming Appointment */}
-      <div>
+      <div id="upcoming-appointment">
         <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-4">Próximo Agendamento</h2>
         {upcomingAppointments.length > 0 ? (
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
@@ -455,7 +467,7 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       </div>
 
       {/* Quick Services */}
-      <div>
+      <div id="services-section">
         <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-4">Nossos Serviços</h2>
         <div className="space-y-3">
           {services.map(s => (
@@ -905,8 +917,54 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
     );
   };
 
+  const tutorialSteps: TutorialStep[] = [
+    {
+      targetId: 'loyalty-card',
+      title: 'Programa de Fidelidade',
+      content: 'Acompanhe seus pontos aqui. A cada lavagem você ganha pontos que podem ser trocados por serviços grátis!',
+      position: 'bottom'
+    },
+    {
+      targetId: 'upcoming-appointment',
+      title: 'Seus Agendamentos',
+      content: 'Aqui você vê seu próximo agendamento confirmado. Fique de olho no horário!',
+      position: 'bottom'
+    },
+    {
+      targetId: 'services-section',
+      title: 'Nossos Serviços',
+      content: 'Explore nossa lista de serviços, veja preços e promoções especiais para seu carro.',
+      position: 'top'
+    },
+    {
+      targetId: 'nav-book',
+      title: 'Agendar Lavagem',
+      content: 'Toque aqui para realizar um novo agendamento de forma rápida e fácil.',
+      position: 'top'
+    },
+    {
+      targetId: 'nav-vehicles',
+      title: 'Seus Veículos',
+      content: 'Gerencie seus carros cadastrados e adicione novos veículos na sua garagem virtual.',
+      position: 'top'
+    }
+  ];
+
+  const handleTutorialComplete = () => {
+    localStorage.setItem('lavajato_tutorial_seen_v1', 'true');
+    setShowTutorial(false);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      {showTutorial && (
+        <Tutorial 
+          steps={tutorialSteps} 
+          onComplete={handleTutorialComplete} 
+          onSkip={handleTutorialComplete} 
+        />
+      )}
+
       {/* Success Modal */}
       {successModal && (
         <div className="fixed inset-0 z-[60] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-6">

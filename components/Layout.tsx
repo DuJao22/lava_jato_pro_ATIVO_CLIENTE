@@ -7,7 +7,8 @@ import {
   FileBarChart, 
   Gauge,
   CalendarDays,
-  Settings
+  Settings,
+  LogOut
 } from 'lucide-react';
 import { UserRole } from '../types';
 
@@ -16,9 +17,10 @@ interface LayoutProps {
   currentView: string;
   setView: (view: any) => void;
   userRole: UserRole;
+  onLogout?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, userRole }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, userRole, onLogout }) => {
   
   const menuItems = [
     { id: 'dashboard', label: 'Início', shortLabel: 'Painel', icon: LayoutDashboard },
@@ -65,7 +67,16 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, 
           })}
         </nav>
 
-        <div className="p-8 border-t border-white/5">
+        <div className="p-8 border-t border-white/5 flex flex-col gap-4">
+          {onLogout && (
+            <button 
+              onClick={onLogout}
+              className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl border border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all duration-300"
+            >
+              <LogOut className="w-5 h-5" />
+              <span className="font-black text-xs uppercase tracking-widest">Sair</span>
+            </button>
+          )}
           <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest text-center">João Layón © 2025</p>
         </div>
       </aside>
@@ -83,8 +94,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, 
                <span className="block text-[8px] text-blue-500 tracking-[0.2em] font-black not-italic">Lava-jato Pro</span>
              </h1>
            </div>
-           <div className="text-[10px] font-black text-white uppercase bg-blue-600/20 px-4 py-2 rounded-full border border-blue-500/30">
-              {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+           <div className="flex items-center gap-3">
+             <div className="text-[10px] font-black text-white uppercase bg-blue-600/20 px-4 py-2 rounded-full border border-blue-500/30">
+                {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+             </div>
+             {onLogout && (
+               <button onClick={onLogout} className="p-2 bg-red-500/10 text-red-400 rounded-xl border border-red-500/20">
+                 <LogOut size={18} />
+               </button>
+             )}
            </div>
         </header>
 
