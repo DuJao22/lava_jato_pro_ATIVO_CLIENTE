@@ -370,9 +370,9 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
             if (establishment.wazeUrl) {
               window.open(establishment.wazeUrl, '_blank');
             } else if (establishment.address) {
-              // Fallback: Search address on Waze
+              // Fallback: Google Maps (works in browser if no app)
               const query = encodeURIComponent(establishment.address);
-              window.open(`https://waze.com/ul?q=${query}&navigate=yes`, '_blank');
+              window.open(`https://www.google.com/maps/dir/?api=1&destination=${query}`, '_blank');
             }
           }}
           className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 active:scale-95 transition-all"
