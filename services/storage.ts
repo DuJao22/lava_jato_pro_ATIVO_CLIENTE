@@ -16,13 +16,13 @@ console.error = (...args) => {
 
 const CONNECTION_STRING = (import.meta as any).env?.VITE_SQLITE_CLOUD_CONNECTION_STRING || "sqlitecloud://cbw4nq6vvk.g5.sqlite.cloud:8860/LavaJato_melhoria.db?apikey=CCfQtOyo5qbyni96cUwEdIG4q2MRcEXpRHGoNpELtNc";
 
-const FATURAMENTO_KEY = 'lavajato_faturamento_v4';
-const DESPESAS_KEY = 'lavajato_despesas_v4';
-const AGENDAMENTOS_KEY = 'lavajato_agendamentos_v1';
-const USERS_KEY = 'lavajato_users_v1';
-const SERVICES_KEY = 'lavajato_services_v1';
-const VEHICLES_KEY = 'lavajato_vehicles_v1';
-const ESTABLISHMENT_KEY = 'lavajato_establishment_v1';
+const FATURAMENTO_KEY = 'lavajato_faturamento_v5';
+const DESPESAS_KEY = 'lavajato_despesas_v5';
+const AGENDAMENTOS_KEY = 'lavajato_agendamentos_v2';
+const USERS_KEY = 'lavajato_users_v2';
+const SERVICES_KEY = 'lavajato_services_v2';
+const VEHICLES_KEY = 'lavajato_vehicles_v2';
+const ESTABLISHMENT_KEY = 'lavajato_establishment_v2';
 
 let db: any = null;
 let isConnecting = false;
@@ -282,6 +282,20 @@ export const storage = {
       } catch(e) { return null; }
     }
     return null;
+  },
+
+  // --- SESSION ---
+  saveSession: (user: User): void => {
+    localStorage.setItem('lavajato_session_v1', JSON.stringify(user));
+  },
+
+  getSession: (): User | null => {
+    const session = localStorage.getItem('lavajato_session_v1');
+    return session ? JSON.parse(session) : null;
+  },
+
+  clearSession: (): void => {
+    localStorage.removeItem('lavajato_session_v1');
   },
 
   // --- VEÍCULOS (NOVO) ---

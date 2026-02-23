@@ -21,10 +21,23 @@ type View = 'dashboard' | 'faturamento' | 'despesas' | 'relatorios' | 'agenda' |
 const App: React.FC = () => {
   // Estado de Usuário (Login)
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => storage.getSession());
   const [isAdminMode, setIsAdminMode] = useState(false);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
+
+  // Persist Session
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    storage.saveSession(user);
+    setShowAuthModal(false);
+    if (user.role === 'admin') setCurrentView('dashboard');
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    storage.clearSession();
+  };
   
   // Dados
   const [faturamentos, setFaturamentos] = useState<Faturamento[]>([]);
@@ -237,11 +250,7 @@ const App: React.FC = () => {
             </div>
             {showAuthModal && (
               <AuthModal 
-                onLoginSuccess={(user) => {
-                  setCurrentUser(user);
-                  setShowAuthModal(false);
-                  if (user.role === 'admin') setCurrentView('dashboard');
-                }} 
+                onLoginSuccess={handleLogin} 
                 onClose={() => setShowAuthModal(false)} 
               />
             )}
@@ -255,16 +264,13 @@ const App: React.FC = () => {
           <ClientArea 
               currentUser={currentUser} 
               onSaveAgendamento={handleClientSaveAgendamento} 
-              onLogout={() => setCurrentUser(null)} 
+              onLogout={handleLogout} 
               onLoginRequest={() => setShowAuthModal(true)}
               existingAppointments={agendamentos} 
           />
           {showAuthModal && (
             <AuthModal 
-              onLoginSuccess={(user) => {
-                setCurrentUser(user);
-                setShowAuthModal(false);
-              }} 
+              onLoginSuccess={handleLogin} 
               onClose={() => setShowAuthModal(false)} 
             />
           )}

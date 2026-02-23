@@ -46,6 +46,10 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
     brand: '', model: '', color: '', plate: '', year: '', size: CarSize.MEDIUM
   });
 
+  const [showVehicleSwitcher, setShowVehicleSwitcher] = useState(false);
+
+  const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
+
   // Load Data
   useEffect(() => {
     const loadUserData = async () => {
@@ -55,9 +59,13 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
         
         const v = await storage.getUserVehicles(currentUser.id);
         setVehicles(v);
+        if (v.length > 0 && !selectedVehicleId) {
+          setSelectedVehicleId(v[0].id);
+        }
       } else {
         setPoints(0);
         setVehicles([]);
+        setSelectedVehicleId('');
       }
       
       const s = await storage.getServices();
@@ -255,17 +263,30 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
     };
     
     await storage.addVehicle(v);
-    setVehicles(await storage.getUserVehicles(currentUser.id));
+    const updatedVehicles = await storage.getUserVehicles(currentUser.id);
+    setVehicles(updatedVehicles);
+    setSelectedVehicleId(v.id);
     setShowVehicleForm(false);
     setNewVehicle({ brand: '', model: '', color: '', plate: '', year: '', size: CarSize.MEDIUM });
   };
 
-  const handleDeleteVehicle = async (id: string) => {
-    if (!currentUser) return;
-    if (confirm('Excluir veículo?')) {
-      await storage.deleteVehicle(id);
-      setVehicles(await storage.getUserVehicles(currentUser.id));
+  const confirmDeleteVehicle = async () => {
+    if (!currentUser || !vehicleToDelete) return;
+    
+    await storage.deleteVehicle(vehicleToDelete);
+    const updatedVehicles = await storage.getUserVehicles(currentUser.id);
+    setVehicles(updatedVehicles);
+    
+    // If deleted vehicle was selected, select another one or clear selection
+    if (selectedVehicleId === vehicleToDelete) {
+      if (updatedVehicles.length > 0) {
+        setSelectedVehicleId(updatedVehicles[0].id);
+      } else {
+        setSelectedVehicleId('');
+      }
     }
+    
+    setVehicleToDelete(null);
   };
 
   // --- RENDERERS ---
@@ -436,8 +457,8 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
       {/* Quick Services */}
       <div>
         <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-4">Nossos Serviços</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {services.slice(0, 4).map(s => (
+        <div className="space-y-3">
+          {services.map(s => (
             <button 
               key={s.id} 
               onClick={() => {
@@ -445,28 +466,103 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
                 setBookingStep(2);
                 setActiveTab('book');
               }}
-              className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left hover:border-blue-200 transition-all active:scale-95 relative overflow-hidden"
+              className="w-full bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-left hover:border-blue-200 transition-all active:scale-95 relative overflow-hidden flex items-start gap-4"
             >
               {s.oldPrice && s.oldPrice > s.price && (
-                <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-black uppercase px-2 py-1 rounded-bl-xl">
+                <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-black uppercase px-2 py-1 rounded-bl-xl z-10">
                   Promoção
                 </div>
               )}
-              <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600 mb-3">
-                <Car size={16} />
+              
+              <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 shrink-0">
+                <Car size={24} />
               </div>
-              <h3 className="font-bold text-slate-900 text-sm">{s.label}</h3>
-              <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">{s.description}</p>
-              <div className="mt-2 flex items-center gap-2">
-                 <p className="text-xs font-black text-blue-600">{renderServicePriceLabel(s)}</p>
-                 {s.oldPrice && s.oldPrice > s.price && (
-                   <p className="text-[10px] font-bold text-slate-400 line-through">R$ {s.oldPrice.toFixed(2)}</p>
-                 )}
+
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-start mb-1">
+                  <h3 className="font-bold text-slate-900 text-sm">{s.label}</h3>
+                </div>
+                
+                <p className="text-xs text-slate-500 leading-relaxed mb-2">{s.description}</p>
+                
+                <div className="flex items-center gap-2">
+                   <p className="text-sm font-black text-blue-600">{renderServicePriceLabel(s)}</p>
+                   {s.oldPrice && s.oldPrice > s.price && (
+                     <p className="text-xs font-bold text-slate-400 line-through">R$ {s.oldPrice.toFixed(2)}</p>
+                   )}
+                </div>
               </div>
             </button>
           ))}
         </div>
       </div>
+
+      {/* Vehicle Switcher Floating Button */}
+      {currentUser && vehicles.length >= 2 && (
+        <>
+          <button
+            onClick={() => setShowVehicleSwitcher(true)}
+            className="fixed bottom-24 right-4 bg-slate-900 text-white p-4 rounded-full shadow-xl shadow-slate-900/30 z-40 animate-in zoom-in duration-300 flex items-center gap-2 hover:scale-105 transition-transform"
+          >
+            <Car size={20} />
+            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Trocar Carro</span>
+          </button>
+
+          {showVehicleSwitcher && (
+            <div className="fixed inset-0 z-[60] bg-slate-900/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+              <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 animate-in slide-in-from-bottom duration-300 shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-black text-slate-900 uppercase italic text-lg">Selecionar Veículo</h3>
+                  <button onClick={() => setShowVehicleSwitcher(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                  {vehicles.map(v => (
+                    <button
+                      key={v.id}
+                      onClick={() => {
+                        setSelectedVehicleId(v.id);
+                        setShowVehicleSwitcher(false);
+                      }}
+                      className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center justify-between group ${
+                        selectedVehicleId === v.id 
+                          ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-500/20 shadow-lg shadow-blue-500/10' 
+                          : 'border-slate-100 bg-white hover:border-blue-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="text-left">
+                        <h4 className="font-black text-slate-900 uppercase italic text-sm group-hover:text-blue-700 transition-colors">{v.brand} {v.model}</h4>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded tracking-wide ${
+                            v.size === 'Grande' ? 'bg-purple-100 text-purple-700' :
+                            v.size === 'Médio' ? 'bg-blue-100 text-blue-700' :
+                            'bg-emerald-100 text-emerald-700'
+                          }`}>{v.size}</span>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">{v.plate || 'S/ Placa'}</span>
+                        </div>
+                      </div>
+                      {selectedVehicleId === v.id && (
+                        <div className="bg-blue-600 text-white p-1.5 rounded-full shadow-lg shadow-blue-500/30">
+                          <CheckCircle2 size={16} />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                
+                <button 
+                  onClick={() => { setShowVehicleSwitcher(false); setActiveTab('vehicles'); setShowVehicleForm(true); }}
+                  className="w-full mt-6 py-4 border-2 border-dashed border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-400 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Plus size={16} /> Adicionar Outro
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 
@@ -738,6 +834,24 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
                 value={newVehicle.plate} onChange={e => setNewVehicle({...newVehicle, plate: e.target.value})}
               />
             </div>
+            <div className="mb-4">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Porte do Veículo</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[CarSize.SMALL, CarSize.MEDIUM, CarSize.LARGE].map(size => (
+                  <button
+                    key={size}
+                    onClick={() => setNewVehicle({...newVehicle, size})}
+                    className={`py-2 rounded-lg text-[10px] font-black uppercase tracking-wide border-2 transition-all ${
+                      newVehicle.size === size 
+                        ? 'bg-slate-900 text-white border-slate-900' 
+                        : 'bg-white text-slate-400 border-slate-100 hover:border-slate-200'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
             <button 
               onClick={handleAddVehicle}
               className="w-full bg-slate-900 text-white py-3 rounded-xl font-black uppercase text-[10px] tracking-widest"
@@ -754,12 +868,39 @@ export const ClientArea: React.FC<ClientAreaProps> = ({
                 <h3 className="font-black text-slate-900 uppercase italic">{v.brand} {v.model}</h3>
                 <p className="text-xs text-slate-500 font-bold uppercase mt-1">{v.color} • {v.plate || 'S/ Placa'}</p>
               </div>
-              <button onClick={() => handleDeleteVehicle(v.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+              <button onClick={() => setVehicleToDelete(v.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
                 <Trash2 size={18} />
               </button>
             </div>
           ))}
         </div>
+
+        {/* Delete Confirmation Modal */}
+        {vehicleToDelete && (
+          <div className="fixed inset-0 z-[70] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-6">
+            <div className="bg-white w-full max-w-xs rounded-2xl p-6 text-center animate-in zoom-in duration-200">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+                <Trash2 size={24} />
+              </div>
+              <h3 className="font-black text-slate-900 text-lg mb-2">Excluir Veículo?</h3>
+              <p className="text-sm text-slate-500 mb-6">Esta ação não pode ser desfeita.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => setVehicleToDelete(null)}
+                  className="py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 text-xs uppercase tracking-wide"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmDeleteVehicle}
+                  className="py-3 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 text-xs uppercase tracking-wide shadow-lg shadow-red-500/30"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
