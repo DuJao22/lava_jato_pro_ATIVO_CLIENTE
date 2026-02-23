@@ -191,7 +191,7 @@ export const storage = {
   getEstablishmentInfo: async (): Promise<EstablishmentInfo> => {
     const defaultInfo: EstablishmentInfo = {
       name: 'Lava Jato Pro',
-      address: 'Rua Exemplo, 123 - Centro',
+      address: 'Rua Firmo de Matos com, R. Rio Comprido - Eldorado, Contagem - MG',
       phone: '5531999999999',
       instagram: '@lavajato',
       wazeUrl: ''
@@ -206,7 +206,18 @@ export const storage = {
     }
     
     const local = localStorage.getItem(ESTABLISHMENT_KEY);
-    return local ? JSON.parse(local) : defaultInfo;
+    if (local) {
+      const parsed = JSON.parse(local);
+      // Auto-correct address if it matches old defaults
+      if (parsed.address === 'Av. Firmos de Matos, 2630 - Riacho das Pedras' || 
+          parsed.address === 'Rua Exemplo, 123 - Centro' ||
+          parsed.address === 'Avenida Francisco Firmo de Matos, 2630 - Riacho das Pedras, Contagem - MG') {
+        parsed.address = defaultInfo.address;
+        localStorage.setItem(ESTABLISHMENT_KEY, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
+    return defaultInfo;
   },
 
   saveEstablishmentInfo: async (info: EstablishmentInfo): Promise<boolean> => {
